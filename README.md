@@ -1,8 +1,21 @@
 # tresmerge
 Pseudo-flux calibrate and merge TRES echelle spectra
 
-![Sample](sample.png)
+## Citations
 
+If you make use of this code, please cite this repository as
+
+    @misc{tresmerge_czekala,
+      author       = {Ian Czekala},
+      title        = {iancze/tresmerge: beta},
+      month        = sep,
+      year         = 2018,
+      doi          = {10.5281/zenodo.1411998},
+      url          = {https://doi.org/10.5281/zenodo.1411998}
+    }
+
+
+![Sample](sample.png)
 
 This package requires Python 3 and the following packages:
 
@@ -80,11 +93,6 @@ This command will use git to bring down all of the new changes. Then, run
     $python setup.py install
 
 again to install these changes to your system. If you didn't use `git` to download the package in the first place, you can delete the repository, download a new `.zip` package, and install it as before.
-
-## Citations
-
-If you make use of this code, please cite this repository as
-
 
 
 ## How this package works
