@@ -2,7 +2,7 @@
 
 
 import numpy as np
-from scipy.interpolate import interp1d, UnivariateSpline
+from scipy.interpolate import InterpolatedUnivariateSpline, UnivariateSpline
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -60,7 +60,7 @@ def main():
     fl_t /= np.average(fl_t) #divide by the mean flux, so avg(f) = 1
 
     # create an interpolation object to the synthetic spectrum
-    interp = interp1d(wl_t, fl_t, kind="cubic", bounds_error=True)
+    interp = InterpolatedUnivariateSpline(wl_t, fl_t, k=2, ext=2)
     ######################
 
 
@@ -258,6 +258,8 @@ def main():
                 ax[1].plot(wl_left, fl_t_left, "C0", label="template")
                 ax[1].plot(wl_center, fl_t_center, "C0")
                 ax[1].plot(wl_right, fl_t_right, "C0")
+
+                # ax[1].plot(wl_t, fl_t, "k", lw=0.5)
                 ax[1].set_title("Flattened orders")
 
 

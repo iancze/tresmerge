@@ -37,6 +37,8 @@ or
 
     $python3 setup.py install
 
+If you're on a system without administrative priveledges, you might need to add the `--user` flag to the above command. Also, take a look at the commands that are printed out after the install command, since you may need to add the scripts directory to your system PATH. In my case, I needed to add the `/home/iczekala/.local/bin` directory to my `.cshrc` file.
+
 Make sure that `python` or `python3` points to the Python 3 version you want to use. You can check that this is the correct version by first entering the Python interpreter, and you should see something like
 
     $ python
