@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-
+import datetime
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline, UnivariateSpline
 
@@ -214,7 +214,7 @@ def main():
         # PLOTTING THE DATA
         ######################
         # make some plots to examine what the spectrum looks like at the overlap regions
-        with PdfPages('output.pdf', metadata={'Creator':'tresmerge', 'Author':'Ian Czekala', 'Title':"{:} - {:}".format(target, date)}) as pdf:
+        with PdfPages('output.pdf') as pdf:
 
             for order in range(n_orders):
 
@@ -280,6 +280,14 @@ def main():
                 pdf.savefig(fig)
 
                 plt.close('all')
+
+
+            # We can also set the file's metadata via the PdfPages object:
+            d = pdf.infodict()
+            d['Title'] = "{:} - {:}".format(target, date)
+            d['Author'] = "Ian Czekala"
+            d['CreationDate'] = datetime.datetime(2009, 11, 13)
+            d['ModDate'] = datetime.datetime.today()
 
     # sort all of the wl, fl, and sigmas just for good measure
     indsort = np.argsort(wl_all)
