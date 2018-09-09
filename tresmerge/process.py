@@ -2,7 +2,7 @@
 
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, UnivariateSpline
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -11,6 +11,8 @@ from astropy.io import ascii, fits
 from astropy.table import Table
 
 from specutils.io import read_fits
+
+from tresmerge.common import solve_flux
 
 c_ang = 2.99792458e18 #A s^-1
 c_kms = 2.99792458e5 #km s^-1
@@ -29,9 +31,10 @@ def main():
     parser.add_argument("template", help="Name of the FITS file containing the Kurucz template spectrum.")
     parser.add_argument("--outfile", default="merged-spec.txt", help="Name of the output file to write the merged echelle spectrum to.")
     parser.add_argument("--clobber", action="store_true", help="Overwrite any existing output file with new data.")
+    parser.add_argument("--plot", action="store_true", help="Make a set of plots of the merged spectra.")
     parser.add_argument("-t", "--trim", type=int, default=6, help="How many pixels to trim from the front of the file. Default is 6")
     parser.add_argument("--shift", default=0.0, type=float, help="Doppler shift the synthetic spectrum by this amount (in km/s) before doing the merge process. This may help if the target star has an exceptionally high radial velocity. Positive velocities correspond to redshifting the template.")
-    parser.add_argument("--poly-order", default=4, type=int, help="The order Chebyshev polynomial used to flatten each echelle order. 0 = constant, 1 = line, 2 = parabola, 3 = cubic, ... etc.")
+    parser.add_argument("--poly-order", default=3, type=int, help="The order Chebyshev polynomial used to flatten each echelle order. 0 = constant, 1 = line, 2 = parabola, 3 = cubic, ... etc.")
     args = parser.parse_args()
 
     ######################
@@ -77,6 +80,7 @@ def main():
     # Create empty dataset to store pseudo-fluxcaled spectra
     wls = np.empty((n_orders, n_pix))
     fls = np.empty((n_orders, n_pix))
+    fls_cor = np.empty((n_orders, n_pix))
     fls_t = np.empty((n_orders, n_pix)) # to store the interpolated model fluxes
     sigmas = np.empty((n_orders, n_pix))
 
@@ -93,12 +97,13 @@ def main():
         # Where the ratio values are 0, just set it to 1, since the noise will be 0 here too.
         fl_r[fl_r==0] = 1.0
         fl_b = blaze.flux.value[args.trim:]
+        fl_b[fl_b==0] = 1.0
 
         ratio = fl_b / fl_r
 
         # calculate the uncertainty on this pixel as simply the sqrt of the number of counts,
         # but in units of the blaze function
-        sigma = ratio * np.sqrt(fl_r)
+        sigma = ratio * np.sqrt(fl_r + 0.01 * np.median(fl_r)) # to avoid very low vals
 
         wls[order] = wl
         fls[order] = fl_b
@@ -123,57 +128,174 @@ def main():
     fls = fls * factors[:,np.newaxis]
     sigmas = sigmas * factors[:,np.newaxis]
 
-    # get the coefficients for the polynomial which makes it match the synthetic spectrum.
+    for order in range(n_orders):
+        # get the coefficients for the polynomial which makes it match the synthetic spectrum.
+        fl_cor, X = solve_flux(wls[order], fls[order], sigmas[order], fls_t[order], order=args.poly_order)
+        fls_cor[order,:] = fl_cor
 
     ######################
-    # PLOTTING THE DATA
+    # Smoothing the overlap
     ######################
-    # make some plots to examine what the spectrum looks like at the overlap regions
-    with PdfPages('output.pdf', metadata={'Creator':'tresmerge', 'Author':'Ian Czekala', 'Title':"{:} - {:}".format(target, date)}) as pdf:
 
-        for order in range(n_orders):
+    # start with an existing stub, and add onto it with each iteration
+    wl_all = wls[0]
+    fl_all = fls_cor[0]
+    sigma_all = sigmas[0]
 
-            order_min = order - 1 if order > 0 else 0
-            order_max = order + 1 if order < (n_orders - 2) else (n_orders - 1)
+    for order in range(1, n_orders):
 
-            wl_left = wls[order_min]
-            fl_left = fls[order_min]
+        # Find all wavelengths in the stub that have a value larger than the shortest wavelength in the red order
+        l_ind = (wl_all > np.min(wls[order]))
 
-            wl_center = wls[order]
-            fl_center = fls[order]
-            fl_t_center = fls_t[order]
+        # Find all wavelengths in the red order that have a value smaller than the largest wavelength in the stub
+        r_ind = (wls[order] < np.max(wl_all))
 
-            wl_right = wls[order_max]
-            fl_right = fls[order_max]
+        # if either of these is less than 2, then there isn't enough overlap to actually merge and we should
+        # just take add on the new order to the stub without doing any fancy smoothing
+        if (np.sum(l_ind) < 2) or (np.sum(r_ind) < 2):
 
-            # As many times as you like, create a figure fig and save it:
-            fig, ax = plt.subplots(nrows=1, figsize=(8,4))
+            wl_all = np.concatenate((wl_all, wls[order]))
+            fl_all = np.concatenate((fl_all, fls_cor[order]))
+            sigma_all = np.concatenate((sigma_all, sigmas[order]))
 
-            ax.plot(wl_left, fl_left, color="0.6")
-            ax.plot(wl_right, fl_right, color="0.6")
-            ax.plot(wl_center, fl_center, color="k")
-            ax.set_xlabel(r"$\lambda$\,[\AA]")
-            ax.set_ylabel(r"$f_\lambda\,[\propto$\,counts]")
-            ax.set_title("Order {:d}".format(order + 1))
+        else:
 
-            ax.plot(wl_center, fl_t_center)
+            wl_smooth = wl_all[l_ind]
 
-            # save figure to large PDF file
-            pdf.savefig(fig)
-            plt.close('all')
-    #
-    #
-    # # construct an astropy table with the merged files
-    # t = Table(, names=["wl", "fl", "sigma"])
-    #
-    # # put the header into the ECSV header
-    # t.meta = header
-    #
-    # # specify how much accuracy to use for each column
-    # formats = {"wl":"%.3f", "fl":"%.3e", "sigma":"%.3e"}
-    #
-    # # write the result to file
-    # ascii.write(t, arg.outfile, overwrite=args.clobber, format="ecsv", formats=formats)
+            # Grab both wavelengths, fluxes, and sigmas in the overlap region
+            wl_comb = np.concatenate([wl_smooth, wls[order][r_ind]])
+            fl_comb = np.concatenate([fl_all[l_ind], fls_cor[order][r_ind]])
+            sigma_comb = np.concatenate([sigma_all[l_ind], sigmas[order][r_ind]])
+
+            # sort according to wl
+            indsort = np.argsort(wl_comb)
+            wl_sorted = wl_comb[indsort]
+            fl_sorted = fl_comb[indsort]
+            sigma_sorted = sigma_comb[indsort]
+
+            # construct a spline
+            spline = UnivariateSpline(wl_sorted, fl_sorted, w=1/sigma_sorted)
+
+            # choose the left_wl as the wl to interpolate onto
+            fl_smooth = spline(wl_smooth)
+
+            # transfer the sigmas, too, as the sqrt of sum of squares of the adjacent pixels
+            # go through each wl in wl_all[lind], find it's arguement in wl_sorted, and average the two
+            # nearest pixels in sigma_sorted
+            n_comb = len(sigma_sorted)
+            n_smooth = len(wl_smooth)
+
+            sigma_smooth = np.empty(n_smooth)
+
+            for i in range(n_smooth):
+                w = wl_smooth[i]
+
+                # find where this appears in the combined array
+                arg = np.searchsorted(wl_sorted, w)
+
+                # choose this is the first value as long as it isn't the rightmost value
+                if arg < (n_smooth - 1):
+                    sigma_left = arg
+                    sigma_right = arg + 1
+                else:
+                    sigma_left = arg - 1
+                    sigma_right = arg
+
+                sigma_smooth[i] = np.sqrt(sigma_left**2 + sigma_right**2)
+
+            # append all of the pieces together to grow the merged spectrum until we're done adding orders
+            wl_all = np.concatenate((wl_all, wls[order][~r_ind]))
+            fl_all = np.concatenate((fl_all[~l_ind], fl_smooth, fls_cor[order][~r_ind]))
+            sigma_all = np.concatenate((sigma_all[~l_ind], sigma_smooth, sigmas[order][~r_ind]))
+
+
+    if args.plot:
+        ######################
+        # PLOTTING THE DATA
+        ######################
+        # make some plots to examine what the spectrum looks like at the overlap regions
+        with PdfPages('output.pdf', metadata={'Creator':'tresmerge', 'Author':'Ian Czekala', 'Title':"{:} - {:}".format(target, date)}) as pdf:
+
+            for order in range(n_orders):
+
+                order_min = order - 1 if order > 0 else 0
+                order_max = order + 1 if order < (n_orders - 2) else (n_orders - 1)
+
+                wl_left = wls[order_min]
+                fl_left = fls[order_min]
+                fl_t_left = fls_t[order_min]
+                fl_cor_left = fls_cor[order_min]
+
+                wl_center = wls[order]
+                fl_center = fls[order]
+                fl_t_center = fls_t[order]
+                fl_cor_center = fls_cor[order]
+
+                wl_right = wls[order_max]
+                fl_right = fls[order_max]
+                fl_t_right = fls_t[order_max]
+                fl_cor_right = fls_cor[order_max]
+
+                # As many times as you like, create a figure fig and save it:
+                fig, ax = plt.subplots(nrows=3, figsize=(8.5,12), sharex=True)
+
+                ax[0].plot(wl_left, fl_left, color="0.6")
+                ax[0].plot(wl_right, fl_right, color="0.6")
+                ax[0].plot(wl_center, fl_center, color="k", label="data")
+                ax[0].set_title("Order {:d}".format(order + 1))
+
+                ax[0].plot(wl_center, fl_cor_center, "C1", label="cor. data")
+                ax[0].plot(wl_center, fl_t_center, "C0", label="template")
+                ax[0].legend(loc="best", fontsize="x-small")
+
+                # The polynomial-corrected spectra, with the synthetic model on top
+
+                ax[1].plot(wl_left, fl_cor_left, "C1", label="cor. data edge")
+                ax[1].plot(wl_right, fl_cor_right, "C1")
+                ax[1].plot(wl_center, fl_cor_center, "C2", alpha=0.7, label="cor. data center")
+                ax[1].legend(loc="best", fontsize="x-small")
+
+                ax[1].plot(wl_left, fl_t_left, "C0", label="template")
+                ax[1].plot(wl_center, fl_t_center, "C0")
+                ax[1].plot(wl_right, fl_t_right, "C0")
+                ax[1].set_title("Flattened orders")
+
+
+                # The final merged spectrum
+                ax[2].plot(wl_all, fl_all, "C0", label="merged data")
+                ax[2].legend(loc="best", fontsize="x-small")
+                ax[2].set_xlim(np.min(wl_left), np.max(wl_right))
+                ax[2].set_ylim(ax[1].get_ylim())
+                ax[2].set_title("Merged spectrum")
+
+
+                ax[0].set_ylabel(r"$f_\lambda\,[\propto$\,counts]")
+                ax[1].set_ylabel(r"$f_\lambda\,[\propto$\,counts]")
+                ax[2].set_ylabel(r"$f_\lambda\,[\propto$\,counts]")
+
+                ax[2].set_xlabel(r"$\lambda$\,[\AA]")
+                # save figure to large PDF file
+                pdf.savefig(fig)
+
+                plt.close('all')
+
+    # sort all of the wl, fl, and sigmas just for good measure
+    indsort = np.argsort(wl_all)
+    wl_all = wl_all[indsort]
+    fl_all = fl_all[indsort]
+    sigma_all = sigma_all[indsort]
+
+    # construct an astropy table with the merged files
+    t = Table((wl_all, fl_all, sigma_all), names=["wl", "fl", "sigma"])
+
+    for (key,value) in header.items():
+        t.meta[key] = value
+
+    # specify how much accuracy to use for each column
+    formats = {"wl":"%.3f", "fl":"%.3e", "sigma":"%.3e"}
+
+    # write the result to file
+    ascii.write(t, args.outfile, overwrite=args.clobber, format="ecsv", formats=formats)
 
 if __name__=="__main__":
     main()
