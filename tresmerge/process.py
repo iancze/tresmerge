@@ -244,27 +244,27 @@ def main():
                 ax[0].plot(wl_center, fl_center, color="k", label="data")
                 ax[0].set_title("Order {:d}".format(order + 1))
 
-                ax[0].plot(wl_center, fl_cor_center, "C1", label="cor. data")
-                ax[0].plot(wl_center, fl_t_center, "C0", label="template")
+                ax[0].plot(wl_center, fl_cor_center, "r", label="cor. data")
+                ax[0].plot(wl_center, fl_t_center, "b", label="template")
                 ax[0].legend(loc="best", fontsize="x-small")
 
                 # The polynomial-corrected spectra, with the synthetic model on top
 
-                ax[1].plot(wl_left, fl_cor_left, "C1", label="cor. data edge")
-                ax[1].plot(wl_right, fl_cor_right, "C1")
-                ax[1].plot(wl_center, fl_cor_center, "C2", alpha=0.7, label="cor. data center")
+                ax[1].plot(wl_left, fl_cor_left, "r", label="cor. data edge")
+                ax[1].plot(wl_right, fl_cor_right, "r")
+                ax[1].plot(wl_center, fl_cor_center, "g", alpha=0.7, label="cor. data center")
                 ax[1].legend(loc="best", fontsize="x-small")
 
-                ax[1].plot(wl_left, fl_t_left, "C0", label="template")
-                ax[1].plot(wl_center, fl_t_center, "C0")
-                ax[1].plot(wl_right, fl_t_right, "C0")
+                ax[1].plot(wl_left, fl_t_left, "b", label="template")
+                ax[1].plot(wl_center, fl_t_center, "b")
+                ax[1].plot(wl_right, fl_t_right, "b")
 
                 # ax[1].plot(wl_t, fl_t, "k", lw=0.5)
                 ax[1].set_title("Flattened orders")
 
 
                 # The final merged spectrum
-                ax[2].plot(wl_all, fl_all, "C0", label="merged data")
+                ax[2].plot(wl_all, fl_all, "b", label="merged data")
                 ax[2].legend(loc="best", fontsize="x-small")
                 ax[2].set_xlim(np.min(wl_left), np.max(wl_right))
                 ax[2].set_ylim(ax[1].get_ylim())
