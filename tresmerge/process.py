@@ -174,10 +174,10 @@ def main():
             sigma_sorted = sigma_comb[indsort]
 
             # construct a spline
-            spline = UnivariateSpline(wl_sorted, fl_sorted, w=1/sigma_sorted)
+            # spline = UnivariateSpline(wl_sorted, fl_sorted, w=1/sigma_sorted)
 
             # choose the left_wl as the wl to interpolate onto
-            fl_smooth = spline(wl_smooth)
+            # fl_smooth = spline(wl_smooth)
 
             # transfer the sigmas, too, as the sqrt of sum of squares of the adjacent pixels
             # go through each wl in wl_all[lind], find it's arguement in wl_sorted, and average the two
@@ -185,6 +185,7 @@ def main():
             n_comb = len(sigma_sorted)
             n_smooth = len(wl_smooth)
 
+            fl_smooth = np.empty(n_smooth)
             sigma_smooth = np.empty(n_smooth)
 
             for i in range(n_smooth):
@@ -195,12 +196,15 @@ def main():
 
                 # choose this is the first value as long as it isn't the rightmost value
                 if arg < (n_smooth - 1):
-                    sigma_left = arg
-                    sigma_right = arg + 1
+                    arg_left = arg
+                    arg_right = arg + 1
                 else:
-                    sigma_left = arg - 1
-                    sigma_right = arg
+                    arg_left = arg - 1
+                    arg_right = arg
 
+                sigma_left = sigma_sorted[arg_left]
+                sigma_right = sigma_sorted[arg_right]
+                fl_smooth[i] = np.average((fl_sorted[arg_left], fl_sorted[arg_right]), weights=np.array((1/sigma_left**2, 1/sigma_right**2)))
                 sigma_smooth[i] = np.sqrt(sigma_left**2 + sigma_right**2)
 
             # append all of the pieces together to grow the merged spectrum until we're done adding orders
